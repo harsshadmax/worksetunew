@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Worksetu</title>
+  <meta name="description" content="Connect with skilled, verified cooperative workers for household services." />
+
+  <!-- Performance: warm the connection to the API origin before any script
+       needs it — meaningfully cuts the DNS+TLS handshake cost of the very
+       first request, which matters most on long-distance/high-latency
+       connections (the reported UAE lag). -->
+  <link rel="preconnect" href="https://worksetu-api.onrender.com" crossorigin />
+  <link rel="dns-prefetch" href="https://worksetu-api.onrender.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+  <!-- One small font request, swap-on-load so text never blocks on it. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- ================= HEADER ================= -->
+    <header class="app-header">
+      <div class="brand" style="cursor: pointer" @click="goLanding">
+        <span class="mark">WS</span>
+        <span>Worksetu</span>
+      </div>
+
+      <nav v-if="user" class="nav-tabs">
+        <button class="active">Dashboard</button>
+      </nav>
+
+      <div class="header-actions">
+        <button v-if="user" class="btn-logout" @click="handleLogout">Log out</button>
+      </div>
+    </header>
+
+    <!-- ================= LANDING ================= -->
+    <main v-if="view === 'landing'">
+      <section class="hero">
+        <span class="eyebrow">Cooperative service network</span>
+        <h1>Skilled, verified workers from local labour cooperatives</h1>
+        <p>Worksetu connects households with cooperative-backed professionals — fair wages, real accountability, no middlemen.</p>
+        <div class="hero-actions">
+          <button class="btn btn-primary" style="width:auto" @click="goAuth('customer')">Get started as customer</button>
+          <button class="btn btn-outline" style="width:auto" @click="goAuth('worker')">Join as a worker</button>
+        </div>
+      </section>
+
+      <div class="page">
+        <div class="stat-grid">
+          <div class="stat-card">
+            <div class="label">Skilled workers</div>
+            <div class="value">{{ platformStats.totalWorkers }}</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Completed jobs</div>
+            <div class="value">{{ platformStats.completedBookings }}</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Active cooperatives</div>
+            <div class="value">{{ platformStats.activeCooperatives }}</div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top: 2rem">
+          <div class="eyebrow">Services</div>
+          <div class="service-grid" style="margin-top: 1rem">
+            <div class="service-card" v-for="svc in services" :key="svc.id">
+              <div class="name">{{ svc.translationKey }}</div>
+              <div class="rate">₹{{ svc.baseRate }} base</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="text-align: center; margin-top: 2rem">
+          <button class="btn btn-outline" style="width:auto" @click="goAuth('admin')">Platform administrator sign-in</button>
+        </div>
+      </div>
+    </main>
+
+    <!-- ================= LOGIN / REGISTER ================= -->
+    <main v-else-if="view === 'login'" class="page page-narrow">
+      <button class="btn btn-outline" style="width:auto; margin-bottom: 1.5rem" @click="goLanding">← Back</button>
+
+      <div class="card">
+        <span class="eyebrow">{{ role }} access</span>
+        <h2 style="margin: 0.35rem 0 1.25rem">{{ authMode === 'login' ? 'Sign in' : 'Create account' }}</h2>
+
+        <div v-if="role !== 'admin'" class="role-switcher">
+          <button :class="{ active: authMode === 'login' }" @click="authMode = 'login'; authError = ''">Sign in</button>
+          <button :class="{ active: authMode === 'register' }" @click="authMode = 'register'; authError = ''">Register</button>
+        </div>
+
+        <div v-if="authError" class="error-banner">{{ authError }}</div>
+
+        <!-- LOGIN FORM -->
+        <form v-if="authMode === 'login'" @submit.prevent="handleLogin">
+          <div class="field">
+            <label>Email or phone</label>
+            <input type="text" v-model="authForm.identifier" required autocomplete="username" />
+          </div>
+          <div class="field">
+            <label>Password</label>
+            <input type="password" v-model="authForm.password" required autocomplete="current-password" />
+          </div>
+          <button class="btn btn-primary" type="submit" :disabled="authBusy">
+            <span v-if="authBusy" class="spinner"></span>
+            <span>{{ authBusy ? 'Signing in…' : 'Sign in' }}</span>
+          </button>
+
+          <hr class="divider" />
+
+          <div class="eyebrow" style="margin-bottom: 0.6rem">Demo login</div>
+          <div class="demo-login-list">
+            <button type="button" @click="fillDemoAccount">
+              <span>{{ demoAccount.label }}</span>
+              <span class="role-tag">{{ demoAccount.tag }}</span>
+            </button>
+          </div>
+        </form>
+
+        <!-- REGISTER FORM (customer / worker only) -->
+        <form v-else @submit.prevent="handleRegister">
+          <div class="field">
+            <label>Full name</label>
+            <input type="text" v-model="authForm.fullName" required />
+          </div>
+          <div class="field">
+            <label>Email</label>
+            <input type="email" v-model="authForm.identifier" required autocomplete="email" />
+          </div>
+          <div class="field">
+            <label>Phone</label>
+            <input type="tel" v-model="authForm.phone" required />
+          </div>
+          <div class="field">
+            <label>Address</label>
+            <input type="text" v-model="authForm.address" required />
+          </div>
+
+          <template v-if="role === 'worker'">
+            <div class="field">
+              <label>Cooperative</label>
+              <select v-model="authForm.cooperativeId" required>
+                <option value="" disabled>Select a cooperative</option>
+                <option v-for="c in cooperatives" :key="c.id" :value="c.id">{{ c.name }}</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Primary skill</label>
+              <select v-model="authForm.primarySkillId" required>
+                <option value="" disabled>Select a skill</option>
+                <option v-for="s in services" :key="s.id" :value="s.id">{{ s.translationKey }}</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Years of experience</label>
+              <input type="number" min="0" v-model="authForm.experienceYears" />
+            </div>
+            <div class="field">
+              <label>Service radius (km)</label>
+              <input type="number" min="1" v-model="authForm.serviceAreaRadiusKm" />
+            </div>
+          </template>
+
+          <div class="field">
+            <label>Password</label>
+            <input type="password" v-model="authForm.password" required autocomplete="new-password" />
+          </div>
+          <button class="btn btn-primary" type="submit" :disabled="authBusy">
+            <span v-if="authBusy" class="spinner"></span>
+            <span>{{ authBusy ? 'Creating account…' : 'Create account' }}</span>
+          </button>
+        </form>
+      </div>
+    </main>
+
+    <!-- ================= CUSTOMER DASHBOARD ================= -->
+    <main v-else-if="view === 'dashboard' && role === 'customer'" class="page">
+      <h2>Book a service</h2>
+
+      <div v-if="!selectedService" class="service-grid">
+        <div class="service-card" v-for="svc in services" :key="svc.id" @click="selectService(svc)">
+          <div class="name">{{ svc.translationKey }}</div>
+          <div class="rate">₹{{ svc.baseRate }} base · ₹{{ svc.hourlyRate }}/hr</div>
+        </div>
+      </div>
+
+      <div v-else class="card">
+        <button class="btn btn-outline" style="width:auto; margin-bottom: 1rem" @click="selectedService = null">← Choose a different service</button>
+        <h3 style="margin-top:0">{{ selectedService.translationKey }}</h3>
+        <div v-if="bookingError" class="error-banner">{{ bookingError }}</div>
+        <form @submit.prevent="submitBooking">
+          <div class="field">
+            <label>Service address</label>
+            <input type="text" v-model="bookingForm.address" required />
+          </div>
+          <div class="field">
+            <label>Describe the work</label>
+            <textarea rows="3" v-model="bookingForm.description" required minlength="10"></textarea>
+          </div>
+          <div class="field">
+            <label>Urgency</label>
+            <select v-model="bookingForm.urgency">
+              <option value="NORMAL">Normal (within 24 hours)</option>
+              <option value="URGENT">Urgent (within 2 hours)</option>
+            </select>
+          </div>
+          <button class="btn btn-primary" type="submit" :disabled="bookingBusy">
+            <span v-if="bookingBusy" class="spinner"></span>
+            <span>{{ bookingBusy ? 'Submitting…' : 'Find cooperative workers' }}</span>
+          </button>
+        </form>
+      </div>
+
+      <div class="card" style="margin-top: 1.5rem">
+        <div style="display:flex; justify-content: space-between; align-items:center">
+          <div class="eyebrow">My bookings</div>
+          <button class="btn btn-outline" style="width:auto" @click="refreshCustomerData">Refresh</button>
+        </div>
+        <div v-if="myBookings.length === 0" class="muted" style="margin-top: 0.75rem">No bookings yet.</div>
+        <div v-for="b in myBookings" :key="b.id" class="list-row">
+          <div>
+            <strong>{{ b.serviceCategoryId }}</strong>
+            <div class="muted" style="font-size: 0.75rem">{{ b.description }}</div>
+          </div>
+          <div style="text-align:right">
+            <span class="badge badge-neutral">{{ b.status }}</span>
+            <div class="muted" style="font-size: 0.75rem">₹{{ b.estimatedTotal }}</div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- ================= WORKER DASHBOARD ================= -->
+    <main v-else-if="view === 'dashboard' && role === 'worker'" class="page">
+      <div class="card">
+        <div style="display:flex; justify-content: space-between; align-items:center">
+          <div>
+            <div class="eyebrow">Availability</div>
+            <h3 style="margin: 0.25rem 0 0">{{ user?.workerProfile?.availabilityStatus === 'AVAILABLE' ? 'Available for jobs' : 'Off duty' }}</h3>
+          </div>
+          <button class="btn" :class="user?.workerProfile?.availabilityStatus === 'AVAILABLE' ? 'btn-outline' : 'btn-primary'" style="width:auto" :disabled="availabilityBusy" @click="toggleAvailability">
+            {{ user?.workerProfile?.availabilityStatus === 'AVAILABLE' ? 'Go off duty' : 'Go available' }}
+          </button>
+        </div>
+      </div>
+
+      <div class="stat-grid" style="margin-top: 1rem" v-if="wallet">
+        <div class="stat-card">
+          <div class="label">Today's earnings</div>
+          <div class="value">{{ formatCurrency(wallet.todayEarnings) }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Available balance</div>
+          <div class="value">{{ formatCurrency(wallet.availableBalance) }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Cooperative dividend</div>
+          <div class="value">{{ wallet.dividendSharePercent }}%</div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top: 1.5rem">
+        <div style="display:flex; justify-content: space-between; align-items:center">
+          <div class="eyebrow">Incoming requests</div>
+          <button class="btn btn-outline" style="width:auto" @click="refreshWorkerData">Refresh</button>
+        </div>
+        <div v-if="workerIncoming.length === 0" class="muted" style="margin-top: 0.75rem">No open offers right now.</div>
+        <div v-for="offer in workerIncoming" :key="offer.dispatchLogId" class="list-row">
+          <div>
+            <strong>{{ offer.serviceCategory }}</strong>
+            <div class="muted" style="font-size: 0.75rem">{{ offer.customerAreaLabel }} · {{ offer.distanceKm?.toFixed(1) }} km</div>
+          </div>
+          <div style="display:flex; gap: 0.5rem">
+            <button class="btn btn-outline" style="width:auto" @click="respondToOffer(offer, 'DECLINE')">Decline</button>
+            <button class="btn btn-primary" style="width:auto" @click="respondToOffer(offer, 'ACCEPT')">Accept</button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- ================= ADMIN DASHBOARD ================= -->
+    <main v-else-if="view === 'dashboard' && role === 'admin'" class="page">
+      <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom: 1rem">
+        <h2 style="margin:0">Registrar overview</h2>
+        <button class="btn btn-outline" style="width:auto" @click="refreshAdminData">Refresh</button>
+      </div>
+      <div class="stat-grid" v-if="adminSummary">
+        <div class="stat-card">
+          <div class="label">Total workers</div>
+          <div class="value">{{ adminSummary.totalWorkers }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Available now</div>
+          <div class="value">{{ adminSummary.availableWorkers }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Customers</div>
+          <div class="value">{{ adminSummary.totalCustomers }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Active bookings</div>
+          <div class="value">{{ adminSummary.activeBookings }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Completed bookings</div>
+          <div class="value">{{ adminSummary.completedBookings }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Cooperatives</div>
+          <div class="value">{{ adminSummary.totalCooperatives }}</div>
+        </div>
+      </div>
+    </main>
+
+    <footer class="footnote">Worksetu — cooperative service network. This is a redesigned frontend for the same platform and backend.</footer>
+  </div>
+
+  <script>
+    // The single deployment config point — same pattern as the original
+    // site. Point this at a different backend only if you deploy your own.
+    window.WORKSETU_API_BASE = "https://worksetu-api.onrender.com";
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/vue@3.4.21/dist/vue.global.prod.js"></script>
+  <script src="api.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

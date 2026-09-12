@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: worksetu-new
+    runtime: static
+    plan: free
+    buildCommand: "echo 'no build step — static files served as-is'"
+    staticPublishPath: .
+    pullRequestPreviewsEnabled: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
