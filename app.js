@@ -346,6 +346,17 @@ createApp({
       return "₹" + Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
     }
 
+    // The backend's translationKey (e.g. "domesticHelp") is meant to be
+    // looked up in a translations file — this MVP has no i18n layer yet
+    // (see DEPLOY.md), so just humanize it into readable English instead
+    // of showing the raw camelCase key.
+    function humanize(key) {
+      if (!key) return "";
+      return key
+        .replace(/([a-z])([A-Z])/g, "$1 $2")
+        .replace(/^./, (c) => c.toUpperCase());
+    }
+
     return {
       role,
       view,
@@ -381,7 +392,8 @@ createApp({
       refreshCustomerData,
       adminSummary,
       refreshAdminData,
-      formatCurrency
+      formatCurrency,
+      humanize
     };
   }
 }).mount("#app");

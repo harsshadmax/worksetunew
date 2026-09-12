@@ -70,7 +70,7 @@
           <div class="eyebrow">Services</div>
           <div class="service-grid" style="margin-top: 1rem">
             <div class="service-card" v-for="svc in services" :key="svc.id">
-              <div class="name">{{ svc.translationKey }}</div>
+              <div class="name">{{ humanize(svc.translationKey) }}</div>
               <div class="rate">₹{{ svc.baseRate }} base</div>
             </div>
           </div>
@@ -154,7 +154,7 @@
               <label>Primary skill</label>
               <select v-model="authForm.primarySkillId" required>
                 <option value="" disabled>Select a skill</option>
-                <option v-for="s in services" :key="s.id" :value="s.id">{{ s.translationKey }}</option>
+                <option v-for="s in services" :key="s.id" :value="s.id">{{ humanize(s.translationKey) }}</option>
               </select>
             </div>
             <div class="field">
@@ -185,14 +185,14 @@
 
       <div v-if="!selectedService" class="service-grid">
         <div class="service-card" v-for="svc in services" :key="svc.id" @click="selectService(svc)">
-          <div class="name">{{ svc.translationKey }}</div>
+          <div class="name">{{ humanize(svc.translationKey) }}</div>
           <div class="rate">₹{{ svc.baseRate }} base · ₹{{ svc.hourlyRate }}/hr</div>
         </div>
       </div>
 
       <div v-else class="card">
         <button class="btn btn-outline" style="width:auto; margin-bottom: 1rem" @click="selectedService = null">← Choose a different service</button>
-        <h3 style="margin-top:0">{{ selectedService.translationKey }}</h3>
+        <h3 style="margin-top:0">{{ humanize(selectedService.translationKey) }}</h3>
         <div v-if="bookingError" class="error-banner">{{ bookingError }}</div>
         <form @submit.prevent="submitBooking">
           <div class="field">
@@ -225,7 +225,7 @@
         <div v-if="myBookings.length === 0" class="muted" style="margin-top: 0.75rem">No bookings yet.</div>
         <div v-for="b in myBookings" :key="b.id" class="list-row">
           <div>
-            <strong>{{ b.serviceCategoryId }}</strong>
+            <strong>{{ humanize(b.serviceCategoryId) }}</strong>
             <div class="muted" style="font-size: 0.75rem">{{ b.description }}</div>
           </div>
           <div style="text-align:right">
@@ -273,7 +273,7 @@
         <div v-if="workerIncoming.length === 0" class="muted" style="margin-top: 0.75rem">No open offers right now.</div>
         <div v-for="offer in workerIncoming" :key="offer.dispatchLogId" class="list-row">
           <div>
-            <strong>{{ offer.serviceCategory }}</strong>
+            <strong>{{ humanize(offer.serviceCategory) }}</strong>
             <div class="muted" style="font-size: 0.75rem">{{ offer.customerAreaLabel }} · {{ offer.distanceKm?.toFixed(1) }} km</div>
           </div>
           <div style="display:flex; gap: 0.5rem">
