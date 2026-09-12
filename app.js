@@ -25,7 +25,7 @@
 const { createApp, ref, reactive, computed, onMounted } = Vue;
 
 const DEMO_ACCOUNTS = {
-  customer: { label: "Deepika Ramaswamy", tag: "CUSTOMER", identifier: "deepika@example.com", password: "TestPass@123" },
+  customer: { label: "Deepika Ramaswamy", tag: "CUSTOMER", identifier: "deepika@example.com", password: "Customer@123" },
   worker: { label: "Ravi Kumar (Plumber, Chennai Coop)", tag: "WORKER", identifier: "ravi.kumar@example.com", password: "Worker@123" },
   admin: { label: "Registrar (Super Admin)", tag: "ADMIN", identifier: "registrar@worksetu.coop", password: "AdminPass@123" }
 };
