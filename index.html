@@ -29,7 +29,7 @@
         <span>Worksetu</span>
       </div>
 
-      <nav v-if="user" class="nav-tabs">
+      <nav v-if="user && role !== 'admin'" class="nav-tabs">
         <button class="active">Dashboard</button>
       </nav>
 
@@ -284,36 +284,366 @@
       </div>
     </main>
 
-    <!-- ================= ADMIN DASHBOARD ================= -->
-    <main v-else-if="view === 'dashboard' && role === 'admin'" class="page">
-      <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom: 1rem">
-        <h2 style="margin:0">Registrar overview</h2>
-        <button class="btn btn-outline" style="width:auto" @click="refreshAdminData">Refresh</button>
-      </div>
-      <div class="stat-grid" v-if="adminSummary">
-        <div class="stat-card">
-          <div class="label">Total workers</div>
-          <div class="value">{{ adminSummary.totalWorkers }}</div>
+    <!-- ================= ADMIN CONSOLE ================= -->
+    <main v-else-if="view === 'dashboard' && role === 'admin'" class="admin-layout">
+      <aside class="admin-sidebar">
+        <button :class="{ active: adminTab === 'dashboard' }" @click="setAdminTab('dashboard')">Dashboard</button>
+        <button :class="{ active: adminTab === 'requests' }" @click="setAdminTab('requests')">Service Dispatch Requests</button>
+        <button :class="{ active: adminTab === 'continuity' }" @click="setAdminTab('continuity')">Continuity Monitor</button>
+        <button :class="{ active: adminTab === 'liveworkers' }" @click="setAdminTab('liveworkers')">Live Worker Operations</button>
+        <button :class="{ active: adminTab === 'workers' }" @click="setAdminTab('workers')">Workers Directory</button>
+        <button :class="{ active: adminTab === 'customers' }" @click="setAdminTab('customers')">Customers Directory</button>
+        <button :class="{ active: adminTab === 'cooperatives' }" @click="setAdminTab('cooperatives')">Cooperatives Directory</button>
+        <button :class="{ active: adminTab === 'ledger' }" @click="setAdminTab('ledger')">Bookings Ledger</button>
+        <button :class="{ active: adminTab === 'services' }" @click="setAdminTab('services')">Services Settings</button>
+        <button :class="{ active: adminTab === 'notifications' }" @click="setAdminTab('notifications')">Notifications</button>
+        <button :class="{ active: adminTab === 'reports' }" @click="setAdminTab('reports')">Reports &amp; Analytics</button>
+        <button :class="{ active: adminTab === 'audit' }" @click="setAdminTab('audit')">Audit Logs</button>
+        <button :class="{ active: adminTab === 'settings' }" @click="setAdminTab('settings')">Settings</button>
+      </aside>
+
+      <div class="admin-content">
+        <!-- DASHBOARD -->
+        <div v-if="adminTab === 'dashboard'">
+          <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom: 1rem">
+            <h2 style="margin:0">Registrar overview</h2>
+            <button class="btn btn-outline btn-sm" @click="refreshAdminData">Refresh</button>
+          </div>
+          <div class="stat-grid" v-if="adminSummary">
+            <div class="stat-card">
+              <div class="label">Total workers</div>
+              <div class="value">{{ adminSummary.totalWorkers }}</div>
+            </div>
+            <div class="stat-card">
+              <div class="label">Available now</div>
+              <div class="value">{{ adminSummary.availableWorkers }}</div>
+            </div>
+            <div class="stat-card">
+              <div class="label">Customers</div>
+              <div class="value">{{ adminSummary.totalCustomers }}</div>
+            </div>
+            <div class="stat-card">
+              <div class="label">Active bookings</div>
+              <div class="value">{{ adminSummary.activeBookings }}</div>
+            </div>
+            <div class="stat-card">
+              <div class="label">Completed bookings</div>
+              <div class="value">{{ adminSummary.completedBookings }}</div>
+            </div>
+            <div class="stat-card">
+              <div class="label">Cooperatives</div>
+              <div class="value">{{ adminSummary.totalCooperatives }}</div>
+            </div>
+          </div>
         </div>
-        <div class="stat-card">
-          <div class="label">Available now</div>
-          <div class="value">{{ adminSummary.availableWorkers }}</div>
+
+        <!-- SERVICE DISPATCH REQUESTS -->
+        <div v-else-if="adminTab === 'requests'">
+          <h2>Service Dispatch Requests</h2>
+          <div class="filter-bar">
+            <select v-model="adminBookingsFilter" @change="loadAdminBookings">
+              <option value="">All statuses</option>
+              <option v-for="s in ['REQUESTED','DISPATCHING_TOP3','DISPATCHING_POOL','ASSIGNED','CONFIRMED','IN_PROGRESS','COMPLETED','SETTLED','CANCELLED']" :key="s" :value="s">{{ s }}</option>
+            </select>
+            <button class="btn btn-outline btn-sm" @click="loadAdminBookings">Refresh</button>
+          </div>
+          <div class="card" style="overflow-x:auto">
+            <table class="data-table">
+              <thead><tr><th>Customer</th><th>Service</th><th>Worker</th><th>Status</th><th>Amount</th><th>Actions</th></tr></thead>
+              <tbody>
+                <tr v-for="b in adminBookings" :key="b.id">
+                  <td>{{ b.customerName }}</td>
+                  <td>{{ humanize(b.serviceCategoryId) }}</td>
+                  <td>{{ b.workerName || '—' }}</td>
+                  <td><span class="badge badge-neutral">{{ b.status }}</span></td>
+                  <td>₹{{ b.estimatedTotal }}</td>
+                  <td>
+                    <button class="btn btn-outline btn-sm" @click="adminForceAssign(b)">Force assign</button>
+                    <button class="btn btn-outline btn-sm" style="color: var(--color-danger)" @click="adminCancelBooking(b)">Cancel</button>
+                  </td>
+                </tr>
+                <tr v-if="adminBookings.length === 0"><td colspan="6" class="muted">No bookings match this filter.</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
-        <div class="stat-card">
-          <div class="label">Customers</div>
-          <div class="value">{{ adminSummary.totalCustomers }}</div>
+
+        <!-- CONTINUITY MONITOR -->
+        <div v-else-if="adminTab === 'continuity'">
+          <div style="display:flex; justify-content: space-between; align-items:center">
+            <h2>Worker Continuity Dispatch Monitor</h2>
+            <button class="btn btn-outline btn-sm" @click="loadAdminActiveDispatches">Refresh</button>
+          </div>
+          <div v-if="adminActiveDispatches.length === 0" class="muted">No bookings are currently being dispatched.</div>
+          <div class="card" v-for="d in adminActiveDispatches" :key="d.bookingId">
+            <div style="display:flex; justify-content: space-between">
+              <strong>{{ d.customerName }}</strong>
+              <span class="badge badge-neutral">{{ d.phase }}</span>
+            </div>
+            <div class="muted" style="font-size:0.8rem; margin-top:0.5rem">{{ d.candidates.length }} candidate(s) contacted</div>
+            <div class="list-row" v-for="c in d.candidates" :key="c.workerId">
+              <span>{{ c.name }}</span>
+              <span class="muted">{{ c.distanceKm?.toFixed(1) }} km</span>
+            </div>
+          </div>
         </div>
-        <div class="stat-card">
-          <div class="label">Active bookings</div>
-          <div class="value">{{ adminSummary.activeBookings }}</div>
+
+        <!-- LIVE WORKER OPERATIONS -->
+        <div v-else-if="adminTab === 'liveworkers'">
+          <div style="display:flex; justify-content: space-between; align-items:center">
+            <h2>Live Worker Operations</h2>
+            <button class="btn btn-outline btn-sm" @click="loadAdminLiveWorkers">Refresh</button>
+          </div>
+          <div class="card" style="overflow-x:auto">
+            <table class="data-table">
+              <thead><tr><th>Name</th><th>Status</th><th>Location</th><th>Current booking</th></tr></thead>
+              <tbody>
+                <tr v-for="w in adminLiveWorkers" :key="w.workerId">
+                  <td>{{ w.name }}</td>
+                  <td><span class="badge" :class="w.status === 'AVAILABLE' ? 'badge-success' : 'badge-neutral'">{{ w.status }}</span></td>
+                  <td class="muted">{{ w.lat?.toFixed(3) }}, {{ w.lng?.toFixed(3) }}</td>
+                  <td class="muted">{{ w.bookingId || '—' }}</td>
+                </tr>
+                <tr v-if="adminLiveWorkers.length === 0"><td colspan="4" class="muted">No workers currently on duty.</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
-        <div class="stat-card">
-          <div class="label">Completed bookings</div>
-          <div class="value">{{ adminSummary.completedBookings }}</div>
+
+        <!-- WORKERS DIRECTORY -->
+        <div v-else-if="adminTab === 'workers'">
+          <h2>Cooperative Workers Directory</h2>
+          <div class="filter-bar">
+            <select v-model="adminWorkersFilter" @change="loadAdminWorkers">
+              <option value="">All</option>
+              <option value="PENDING">PENDING</option>
+              <option value="APPROVED">APPROVED</option>
+              <option value="REJECTED">REJECTED</option>
+            </select>
+            <button class="btn btn-outline btn-sm" @click="loadAdminWorkers">Refresh</button>
+          </div>
+          <div class="card" style="overflow-x:auto">
+            <table class="data-table">
+              <thead><tr><th>Name</th><th>Cooperative</th><th>Rating</th><th>Availability</th><th>Verification</th><th>Actions</th></tr></thead>
+              <tbody>
+                <tr v-for="w in adminWorkers" :key="w.id">
+                  <td>{{ w.name }}</td>
+                  <td>{{ w.cooperativeName }}</td>
+                  <td>{{ w.ratingAverage }} ⭐</td>
+                  <td>{{ w.availabilityStatus }}</td>
+                  <td><span class="badge badge-neutral">{{ w.verificationStatus }}</span> <span v-if="w.suspended" class="badge" style="background:#fdecea;color:var(--color-danger)">SUSPENDED</span></td>
+                  <td>
+                    <template v-if="w.verificationStatus === 'PENDING'">
+                      <button class="btn btn-primary btn-sm" @click="adminVerifyWorker(w, 'APPROVED')">Approve</button>
+                      <button class="btn btn-outline btn-sm" style="color: var(--color-danger)" @click="adminVerifyWorker(w, 'REJECTED')">Reject</button>
+                    </template>
+                    <button class="btn btn-outline btn-sm" @click="adminToggleWorkerSuspension(w)">{{ w.suspended ? 'Reactivate' : 'Suspend' }}</button>
+                  </td>
+                </tr>
+                <tr v-if="adminWorkers.length === 0"><td colspan="6" class="muted">No workers match this filter.</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
-        <div class="stat-card">
-          <div class="label">Cooperatives</div>
-          <div class="value">{{ adminSummary.totalCooperatives }}</div>
+
+        <!-- CUSTOMERS DIRECTORY -->
+        <div v-else-if="adminTab === 'customers'">
+          <h2>Customers Directory</h2>
+          <div class="filter-bar">
+            <select v-model="adminCustomersFilter" @change="loadAdminCustomers">
+              <option value="">All</option>
+              <option value="ACTIVE">ACTIVE</option>
+              <option value="SUSPENDED">SUSPENDED</option>
+            </select>
+            <button class="btn btn-outline btn-sm" @click="loadAdminCustomers">Refresh</button>
+          </div>
+          <div class="card" style="overflow-x:auto">
+            <table class="data-table">
+              <thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>Status</th><th>Actions</th></tr></thead>
+              <tbody>
+                <tr v-for="c in adminCustomers" :key="c.id">
+                  <td>{{ c.name }}</td>
+                  <td>{{ c.phone }}</td>
+                  <td>{{ c.email }}</td>
+                  <td><span class="badge" :class="c.accountStatus === 'ACTIVE' ? 'badge-success' : 'badge-neutral'">{{ c.accountStatus }}</span></td>
+                  <td><button class="btn btn-outline btn-sm" @click="adminSetCustomerStatus(c)">{{ c.accountStatus === 'ACTIVE' ? 'Suspend' : 'Reactivate' }}</button></td>
+                </tr>
+                <tr v-if="adminCustomers.length === 0"><td colspan="5" class="muted">No customers match this filter.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- COOPERATIVES DIRECTORY -->
+        <div v-else-if="adminTab === 'cooperatives'">
+          <h2>Labour Cooperative Societies</h2>
+          <div class="card" style="overflow-x:auto">
+            <table class="data-table">
+              <thead><tr><th>Name</th><th>Location</th><th>Members</th><th>Founded</th><th>Workers</th><th>Actions</th></tr></thead>
+              <tbody>
+                <tr v-for="c in adminCooperatives" :key="c.id">
+                  <td>{{ c.name }}</td>
+                  <td>{{ c.location }}</td>
+                  <td>{{ c.members }}</td>
+                  <td>{{ c.founded }}</td>
+                  <td>{{ c.workerCount }}</td>
+                  <td><button class="btn btn-outline btn-sm" @click="adminDistributeDividends(c)">Distribute dividends</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="card" style="margin-top: 1rem">
+            <div class="eyebrow">Add cooperative</div>
+            <form @submit.prevent="adminCreateCooperative" style="margin-top: 0.75rem">
+              <div class="field"><label>Name</label><input type="text" v-model="newCooperative.name" required /></div>
+              <div class="field"><label>Location</label><input type="text" v-model="newCooperative.location" required /></div>
+              <div class="field"><label>Registration number</label><input type="text" v-model="newCooperative.registrationNumber" required /></div>
+              <button class="btn btn-primary" type="submit">Add cooperative</button>
+            </form>
+          </div>
+        </div>
+
+        <!-- BOOKINGS LEDGER -->
+        <div v-else-if="adminTab === 'ledger'">
+          <h2>Bookings Ledger</h2>
+          <div class="filter-bar">
+            <select v-model="adminLedgerFilter" @change="loadAdminLedger">
+              <option value="">All statuses</option>
+              <option value="SETTLED">SETTLED</option>
+              <option value="CANCELLED">CANCELLED</option>
+            </select>
+            <button class="btn btn-outline btn-sm" @click="loadAdminLedger">Refresh</button>
+          </div>
+          <div class="card" style="overflow-x:auto">
+            <table class="data-table">
+              <thead><tr><th>Booking</th><th>Status</th><th>Total</th><th>Payment method</th><th>Payment status</th></tr></thead>
+              <tbody>
+                <tr v-for="l in adminLedger" :key="l.bookingId">
+                  <td class="muted">{{ l.bookingId.slice(0, 8) }}</td>
+                  <td><span class="badge badge-neutral">{{ l.status }}</span></td>
+                  <td>{{ l.totalAmount !== null ? '₹' + l.totalAmount : '—' }}</td>
+                  <td>{{ l.paymentMethod || '—' }}</td>
+                  <td>{{ l.paymentStatus || '—' }}</td>
+                </tr>
+                <tr v-if="adminLedger.length === 0"><td colspan="5" class="muted">No entries match this filter.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- SERVICES SETTINGS -->
+        <div v-else-if="adminTab === 'services'">
+          <h2>Service Sectors Management</h2>
+          <div class="card" v-for="svc in services" :key="svc.id" style="display:flex; justify-content: space-between; align-items:center">
+            <div>
+              <strong>{{ humanize(svc.translationKey) }}</strong>
+              <div class="muted" style="font-size:0.8rem">₹{{ svc.baseRate }} base · ₹{{ svc.hourlyRate }}/hr</div>
+            </div>
+            <div style="display:flex; gap:0.5rem; align-items:center">
+              <span class="badge" :class="svc.isEnabled ? 'badge-success' : 'badge-neutral'">{{ svc.isEnabled ? 'Enabled' : 'Disabled' }}</span>
+              <button class="btn btn-outline btn-sm" @click="adminUpdateServiceRate(svc)">Edit price</button>
+              <button class="btn btn-outline btn-sm" @click="adminToggleService(svc)">{{ svc.isEnabled ? 'Disable' : 'Enable' }}</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- NOTIFICATIONS -->
+        <div v-else-if="adminTab === 'notifications'">
+          <h2>Registrar Notification Center</h2>
+          <div class="card">
+            <div class="eyebrow">Broadcast message</div>
+            <form @submit.prevent="submitBroadcast" style="margin-top: 0.75rem">
+              <div class="field">
+                <label>Audience</label>
+                <select v-model="broadcastForm.audience">
+                  <option value="ALL_CUSTOMERS">ALL_CUSTOMERS</option>
+                  <option value="ALL_WORKERS">ALL_WORKERS</option>
+                </select>
+              </div>
+              <div class="field"><label>Title</label><input type="text" v-model="broadcastForm.title" required /></div>
+              <div class="field"><label>Message</label><textarea rows="3" v-model="broadcastForm.body" required></textarea></div>
+              <button class="btn btn-primary" type="submit" :disabled="broadcastBusy">{{ broadcastBusy ? 'Sending…' : 'Send broadcast' }}</button>
+              <p v-if="broadcastResult" class="muted" style="margin-top:0.5rem">{{ broadcastResult }}</p>
+            </form>
+          </div>
+        </div>
+
+        <!-- REPORTS & ANALYTICS -->
+        <div v-else-if="adminTab === 'reports'">
+          <h2>Performance Reports &amp; Analytics</h2>
+          <div class="card">
+            <div class="eyebrow">Top performing service sectors</div>
+            <div class="list-row" v-for="s in adminTopSectors" :key="s.serviceCategoryId">
+              <span>{{ humanize(s.translationKey) }}</span>
+              <strong>{{ s.completedCount }}</strong>
+            </div>
+          </div>
+          <div class="card" style="margin-top:1rem">
+            <div class="eyebrow">Cooperative rating distribution</div>
+            <div class="list-row" v-for="r in adminRatingDistribution" :key="r.cooperativeId">
+              <span>{{ r.name }}</span>
+              <strong>{{ r.avgRating !== null ? r.avgRating.toFixed(1) + ' ⭐' : '—' }}</strong>
+            </div>
+          </div>
+        </div>
+
+        <!-- AUDIT LOGS -->
+        <div v-else-if="adminTab === 'audit'">
+          <h2>Audit Logs</h2>
+          <div class="card" style="overflow-x:auto">
+            <table class="data-table">
+              <thead><tr><th>Action</th><th>Entity type</th><th>Timestamp</th></tr></thead>
+              <tbody>
+                <tr v-for="log in adminAuditLogs" :key="log.id">
+                  <td class="muted" style="font-family: var(--font-mono)">{{ log.action }}</td>
+                  <td>{{ log.entityType }}</td>
+                  <td class="muted">{{ new Date(log.createdAt).toLocaleString() }}</td>
+                </tr>
+                <tr v-if="adminAuditLogs.length === 0"><td colspan="3" class="muted">No matching entries.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- SETTINGS -->
+        <div v-else-if="adminTab === 'settings'">
+          <h2>Federation Admin Settings</h2>
+
+          <div class="card" v-if="adminConfig">
+            <div class="eyebrow">Platform configuration</div>
+            <div class="field" style="margin-top:0.75rem"><label>Commission rate (%)</label><input type="number" v-model.number="adminConfig.commissionPercent" :disabled="!adminIsSuper" /></div>
+            <div class="field"><label>Dispatch timeout (seconds)</label><input type="number" v-model.number="adminConfig.top3TimeoutSeconds" :disabled="!adminIsSuper" /></div>
+            <div class="field"><label>Pool timeout (seconds)</label><input type="number" v-model.number="adminConfig.poolTimeoutSeconds" :disabled="!adminIsSuper" /></div>
+            <button v-if="adminIsSuper" class="btn btn-primary" style="width:auto" :disabled="adminConfigBusy" @click="saveAdminConfig">{{ adminConfigBusy ? 'Saving…' : 'Save' }}</button>
+            <p v-else class="muted" style="font-size:0.8rem">Only a super admin can change platform configuration.</p>
+          </div>
+
+          <div class="card" style="margin-top:1rem">
+            <div class="eyebrow">Wallet adjustment</div>
+            <form @submit.prevent="submitWalletAdjustment" style="margin-top:0.75rem">
+              <div class="field"><label>Worker profile ID</label><input type="text" v-model="walletAdjustForm.workerProfileId" required /></div>
+              <div class="field"><label>Amount (₹)</label><input type="number" min="0.01" step="0.01" v-model="walletAdjustForm.amount" required /></div>
+              <div class="field">
+                <label>Direction</label>
+                <select v-model="walletAdjustForm.direction">
+                  <option value="CREDIT">Credit</option>
+                  <option value="DEBIT">Debit</option>
+                </select>
+              </div>
+              <div class="field"><label>Reason</label><input type="text" v-model="walletAdjustForm.reason" required /></div>
+              <button class="btn btn-primary" type="submit">Submit adjustment</button>
+              <p v-if="walletAdjustResult" class="muted" style="margin-top:0.5rem">{{ walletAdjustResult }}</p>
+            </form>
+          </div>
+
+          <div class="danger-zone" style="margin-top:1rem" v-if="adminIsSuper">
+            <div class="eyebrow" style="color: var(--color-danger)">Reset demo data</div>
+            <p class="muted" style="font-size:0.8rem">This permanently wipes and re-seeds every account and booking on the platform, including any real activity created during this session. Type RESET to confirm.</p>
+            <div class="field"><input type="text" v-model="demoResetConfirmText" placeholder="Type RESET to confirm" /></div>
+            <button class="btn" style="background: var(--color-danger); color:#fff" :disabled="demoResetConfirmText !== 'RESET' || demoResetBusy" @click="runDemoReset">{{ demoResetBusy ? 'Resetting…' : 'Reset demo data' }}</button>
+            <p v-if="demoResetResult" class="muted" style="margin-top:0.5rem">{{ demoResetResult }}</p>
+          </div>
         </div>
       </div>
     </main>

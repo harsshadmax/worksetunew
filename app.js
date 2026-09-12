@@ -306,9 +306,264 @@ createApp({
     // Admin
     // ---------------------------------------------------------------
     const adminSummary = ref(null);
+    const adminTab = ref("dashboard");
+    const adminIsSuper = computed(() => user.value?.role === "ADMIN" && user.value?.adminProfile?.isSuper === true);
+
+    function setAdminTab(tab) {
+      adminTab.value = tab;
+      const loaders = {
+        dashboard: refreshAdminData,
+        requests: loadAdminBookings,
+        continuity: loadAdminActiveDispatches,
+        liveworkers: loadAdminLiveWorkers,
+        workers: loadAdminWorkers,
+        customers: loadAdminCustomers,
+        cooperatives: loadAdminCooperatives,
+        ledger: loadAdminLedger,
+        reports: loadAdminReports,
+        audit: loadAdminAuditLogs,
+        settings: loadAdminConfig
+      };
+      if (loaders[tab]) loaders[tab]();
+    }
 
     async function refreshAdminData() {
       adminSummary.value = await api.request("GET", "/admin/dashboard/summary").catch(() => null);
+    }
+
+    // -- Service Dispatch Requests --------------------------------------
+    const adminBookings = ref([]);
+    const adminBookingsFilter = ref("");
+    async function loadAdminBookings() {
+      const res = await api
+        .request("GET", "/admin/bookings", { params: { status: adminBookingsFilter.value, pageSize: 50 } })
+        .catch(() => null);
+      adminBookings.value = res?.items || [];
+    }
+    async function adminForceAssign(booking) {
+      const workerId = window.prompt("Worker profile ID to assign:");
+      if (!workerId) return;
+      const reason = window.prompt("Reason for force-assigning (required):");
+      if (!reason) return;
+      await api
+        .request("POST", `/admin/bookings/${booking.id}/force-assign`, { body: { workerId, reason } })
+        .then(() => loadAdminBookings())
+        .catch((err) => window.alert(err.message || "Force-assign failed"));
+    }
+    async function adminCancelBooking(booking) {
+      const reason = window.prompt("Reason for cancelling this booking (required):");
+      if (!reason) return;
+      await api
+        .request("POST", `/admin/bookings/${booking.id}/cancel`, { body: { reason } })
+        .then(() => loadAdminBookings())
+        .catch((err) => window.alert(err.message || "Cancel failed"));
+    }
+
+    // -- Continuity Monitor ----------------------------------------------
+    const adminActiveDispatches = ref([]);
+    async function loadAdminActiveDispatches() {
+      adminActiveDispatches.value = await api.request("GET", "/admin/dispatch/active").catch(() => []);
+    }
+
+    // -- Live Worker Operations -------------------------------------------
+    const adminLiveWorkers = ref([]);
+    async function loadAdminLiveWorkers() {
+      adminLiveWorkers.value = await api.request("GET", "/admin/live/workers").catch(() => []);
+    }
+
+    // -- Workers Directory -------------------------------------------------
+    const adminWorkers = ref([]);
+    const adminWorkersFilter = ref("");
+    async function loadAdminWorkers() {
+      const res = await api
+        .request("GET", "/admin/workers", { params: { verificationStatus: adminWorkersFilter.value, pageSize: 50 } })
+        .catch(() => null);
+      adminWorkers.value = res?.items || [];
+    }
+    async function adminVerifyWorker(worker, decision) {
+      let rejectionReason;
+      if (decision === "REJECTED") {
+        rejectionReason = window.prompt("Reason for rejecting this worker (required):");
+        if (!rejectionReason) return;
+      }
+      await api
+        .request("PATCH", `/admin/workers/${worker.id}/verify`, { body: { decision, rejectionReason } })
+        .then(() => loadAdminWorkers())
+        .catch((err) => window.alert(err.message || "Verification update failed"));
+    }
+    async function adminToggleWorkerSuspension(worker) {
+      const suspended = !worker.suspended;
+      const reason = window.prompt(suspended ? "Reason for suspending (required):" : "Reason for reactivating (required):");
+      if (!reason) return;
+      await api
+        .request("PATCH", `/admin/workers/${worker.id}/status`, { body: { suspended, reason } })
+        .then(() => loadAdminWorkers())
+        .catch((err) => window.alert(err.message || "Status update failed"));
+    }
+
+    // -- Customers Directory -----------------------------------------------
+    const adminCustomers = ref([]);
+    const adminCustomersFilter = ref("");
+    async function loadAdminCustomers() {
+      const res = await api
+        .request("GET", "/admin/customers", { params: { status: adminCustomersFilter.value, pageSize: 50 } })
+        .catch(() => null);
+      adminCustomers.value = res?.items || [];
+    }
+    async function adminSetCustomerStatus(customer) {
+      const next = customer.accountStatus === "ACTIVE" ? "SUSPENDED" : "ACTIVE";
+      const reason = window.prompt(next === "SUSPENDED" ? "Reason for suspending (required):" : "Reason for reactivating (required):");
+      if (!reason) return;
+      await api
+        .request("PATCH", `/admin/customers/${customer.id}/status`, { body: { accountStatus: next, reason } })
+        .then(() => loadAdminCustomers())
+        .catch((err) => window.alert(err.message || "Status update failed"));
+    }
+
+    // -- Cooperatives Directory ---------------------------------------------
+    const adminCooperatives = ref([]);
+    const newCooperative = reactive({ name: "", location: "", registrationNumber: "" });
+    async function loadAdminCooperatives() {
+      adminCooperatives.value = await api.request("GET", "/admin/cooperatives").catch(() => []);
+    }
+    async function adminCreateCooperative() {
+      if (!newCooperative.name || !newCooperative.location || !newCooperative.registrationNumber) return;
+      await api
+        .request("POST", "/admin/cooperatives", { body: { ...newCooperative } })
+        .then(() => {
+          newCooperative.name = "";
+          newCooperative.location = "";
+          newCooperative.registrationNumber = "";
+          return loadAdminCooperatives();
+        })
+        .catch((err) => window.alert(err.message || "Could not create cooperative"));
+    }
+    async function adminDistributeDividends(coop) {
+      if (!window.confirm(`Distribute this month's dividend share to every worker in ${coop.name}? This pays out real wallet credit.`)) return;
+      const res = await api.request("POST", `/admin/cooperatives/${coop.id}/distribute-dividends`, { body: {} }).catch((err) => {
+        window.alert(err.message || "Distribution failed");
+        return null;
+      });
+      if (res) window.alert(`Distributed dividends to ${res.distributed.length} worker(s).`);
+    }
+
+    // -- Bookings Ledger -------------------------------------------------
+    const adminLedger = ref([]);
+    const adminLedgerFilter = ref("");
+    async function loadAdminLedger() {
+      const res = await api
+        .request("GET", "/admin/bookings/ledger", { params: { status: adminLedgerFilter.value, pageSize: 50 } })
+        .catch(() => null);
+      adminLedger.value = res?.items || [];
+    }
+
+    // -- Services Settings -------------------------------------------------
+    async function adminToggleService(svc) {
+      await api
+        .request("PATCH", `/admin/services/${svc.id}`, { body: { isEnabled: !svc.isEnabled } })
+        .then(() => loadCatalog())
+        .catch((err) => window.alert(err.message || "Could not update service"));
+    }
+    async function adminUpdateServiceRate(svc) {
+      const baseRate = Number(window.prompt("New base rate (₹):", svc.baseRate));
+      if (!baseRate || baseRate < 0) return;
+      const hourlyRate = Number(window.prompt("New hourly rate (₹/hr):", svc.hourlyRate));
+      if (!hourlyRate || hourlyRate < 0) return;
+      await api
+        .request("PATCH", `/admin/services/${svc.id}`, { body: { baseRate, hourlyRate } })
+        .then(() => loadCatalog())
+        .catch((err) => window.alert(err.message || "Could not update service"));
+    }
+
+    // -- Notifications / Reports -------------------------------------------
+    const broadcastForm = reactive({ audience: "ALL_CUSTOMERS", title: "", body: "" });
+    const broadcastBusy = ref(false);
+    const broadcastResult = ref("");
+    async function submitBroadcast() {
+      broadcastBusy.value = true;
+      broadcastResult.value = "";
+      try {
+        const res = await api.request("POST", "/admin/notifications/broadcast", { body: { ...broadcastForm } });
+        broadcastResult.value = `Sent to ${res.recipientCount} recipient(s).`;
+        broadcastForm.title = "";
+        broadcastForm.body = "";
+      } catch (err) {
+        broadcastResult.value = err.message || "Broadcast failed";
+      } finally {
+        broadcastBusy.value = false;
+      }
+    }
+
+    const adminTopSectors = ref([]);
+    const adminRatingDistribution = ref([]);
+    async function loadAdminReports() {
+      const [sectors, ratings] = await Promise.all([
+        api.request("GET", "/admin/reports/top-sectors").catch(() => []),
+        api.request("GET", "/admin/reports/rating-distribution").catch(() => [])
+      ]);
+      adminTopSectors.value = sectors;
+      adminRatingDistribution.value = ratings;
+    }
+
+    // -- Audit Logs ----------------------------------------------------
+    const adminAuditLogs = ref([]);
+    async function loadAdminAuditLogs() {
+      const res = await api.request("GET", "/admin/audit-logs", { params: { pageSize: 50 } }).catch(() => null);
+      adminAuditLogs.value = res?.items || [];
+    }
+
+    // -- Settings: platform config + wallet adjustment + demo reset -------
+    const adminConfig = ref(null);
+    const adminConfigBusy = ref(false);
+    async function loadAdminConfig() {
+      adminConfig.value = await api.request("GET", "/admin/config").catch(() => null);
+    }
+    async function saveAdminConfig() {
+      adminConfigBusy.value = true;
+      try {
+        adminConfig.value = await api.request("PATCH", "/admin/config", { body: { ...adminConfig.value } });
+      } catch (err) {
+        window.alert(err.message || "Could not save config");
+      } finally {
+        adminConfigBusy.value = false;
+      }
+    }
+
+    const walletAdjustForm = reactive({ workerProfileId: "", amount: 0, direction: "CREDIT", reason: "" });
+    const walletAdjustResult = ref("");
+    async function submitWalletAdjustment() {
+      walletAdjustResult.value = "";
+      try {
+        const res = await api.request("POST", "/admin/wallet/adjustments", {
+          body: { ...walletAdjustForm, amount: Number(walletAdjustForm.amount) },
+          idempotencyKey: api.idempotencyKey()
+        });
+        walletAdjustResult.value = `Done — transaction ${res.transactionId} (${res.status}).`;
+        walletAdjustForm.workerProfileId = "";
+        walletAdjustForm.amount = 0;
+        walletAdjustForm.reason = "";
+      } catch (err) {
+        walletAdjustResult.value = err.message || "Adjustment failed";
+      }
+    }
+
+    const demoResetConfirmText = ref("");
+    const demoResetBusy = ref(false);
+    const demoResetResult = ref("");
+    async function runDemoReset() {
+      if (demoResetConfirmText.value !== "RESET") return;
+      demoResetBusy.value = true;
+      demoResetResult.value = "";
+      try {
+        await api.request("POST", "/admin/demo/reset");
+        demoResetResult.value = "Demo data has been reset.";
+        demoResetConfirmText.value = "";
+        handleLogout();
+      } catch (err) {
+        demoResetResult.value = err.message || "Reset failed";
+      } finally {
+        demoResetBusy.value = false;
+      }
     }
 
     // ---------------------------------------------------------------
@@ -393,7 +648,55 @@ createApp({
       adminSummary,
       refreshAdminData,
       formatCurrency,
-      humanize
+      humanize,
+      adminTab,
+      adminIsSuper,
+      setAdminTab,
+      adminBookings,
+      adminBookingsFilter,
+      loadAdminBookings,
+      adminForceAssign,
+      adminCancelBooking,
+      adminActiveDispatches,
+      loadAdminActiveDispatches,
+      adminLiveWorkers,
+      loadAdminLiveWorkers,
+      adminWorkers,
+      adminWorkersFilter,
+      loadAdminWorkers,
+      adminVerifyWorker,
+      adminToggleWorkerSuspension,
+      adminCustomers,
+      adminCustomersFilter,
+      loadAdminCustomers,
+      adminSetCustomerStatus,
+      adminCooperatives,
+      newCooperative,
+      loadAdminCooperatives,
+      adminCreateCooperative,
+      adminDistributeDividends,
+      adminLedger,
+      adminLedgerFilter,
+      loadAdminLedger,
+      adminToggleService,
+      adminUpdateServiceRate,
+      broadcastForm,
+      broadcastBusy,
+      broadcastResult,
+      submitBroadcast,
+      adminTopSectors,
+      adminRatingDistribution,
+      adminAuditLogs,
+      adminConfig,
+      adminConfigBusy,
+      saveAdminConfig,
+      walletAdjustForm,
+      walletAdjustResult,
+      submitWalletAdjustment,
+      demoResetConfirmText,
+      demoResetBusy,
+      demoResetResult,
+      runDemoReset
     };
   }
 }).mount("#app");
